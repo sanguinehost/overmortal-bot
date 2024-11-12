@@ -38,7 +38,7 @@ resource "aws_instance" "discord_bot" {
 
               # Application setup
               cd /opt
-              git clone YOUR_REPOSITORY_URL
+              git clone https://github.com/sanguinehost/overmortal-bot
               cd your-repo-name
 
               # Create service file
