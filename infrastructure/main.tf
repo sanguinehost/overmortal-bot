@@ -23,15 +23,33 @@ data "aws_ami" "amazon_linux_2023" {
   }
 }
 
-resource "aws_instance" "discord_bot" {
-  ami           = data.aws_ami.amazon_linux_2023.id
+# Launch Template for the bot instance
+resource "aws_launch_template" "discord_bot" {
+  name_prefix   = "discord-bot-"
+  image_id      = data.aws_ami.amazon_linux_2023.id
   instance_type = "t2.micro"
 
-  tags = {
-    Name = "sanguine-overmortal-bot-server"
+  # Request spot instances
+  instance_market_options {
+    market_type = "spot"
+    spot_options {
+      max_price = "0.008" # ~70% of on-demand price
+    }
   }
 
-  user_data = <<-EOF
+  # Network configuration
+  network_interfaces {
+    associate_public_ip_address = false
+    security_groups             = [aws_security_group.discord_bot.id]
+  }
+
+  # IAM instance profile
+  iam_instance_profile {
+    name = aws_iam_instance_profile.bot_profile.name
+  }
+
+  # User data
+  user_data = base64encode(<<-EOF
               #!/bin/bash
               set -e
 
@@ -88,7 +106,7 @@ resource "aws_instance" "discord_bot" {
               User=ec2-user
               Group=ec2-user
               WorkingDirectory=/opt/overmortal-bot
-              ExecStart=/opt/overmortal-bot/venv/bin/python src/bot.py
+              ExecStart=/opt/overmortal-bot/venv/bin/python src/bot.py --quiet
               StandardOutput=append:/opt/overmortal-bot/logs/bot.log
               StandardError=append:/opt/overmortal-bot/logs/bot.log
               Restart=always
@@ -103,27 +121,60 @@ resource "aws_instance" "discord_bot" {
               systemctl enable discord-bot
               systemctl start discord-bot
               EOF
+  )
 
-  iam_instance_profile = aws_iam_instance_profile.bot_profile.name
-
-  lifecycle {
-    ignore_changes = [ami]
-  }
-
-  subnet_id = aws_subnet.bot_subnet.id
-
-  # Add IMDSv2 requirement
   metadata_options {
     http_endpoint = "enabled"
     http_tokens   = "required"  # Require IMDSv2
   }
 
-  # Add root volume encryption
-  root_block_device {
-    encrypted = true
+  block_device_mappings {
+    device_name = "/dev/xvda"
+    ebs {
+      encrypted   = true
+      volume_size = 8
+      volume_type = "gp3"
+    }
   }
 
-  vpc_security_group_ids = [aws_security_group.discord_bot.id]
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Name = "sanguine-overmortal-bot-server"
+    }
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Auto Scaling Group
+resource "aws_autoscaling_group" "discord_bot" {
+  name                = "discord-bot-asg"
+  desired_capacity    = 1
+  max_size           = 1
+  min_size           = 1
+  health_check_type  = "EC2"
+  health_check_grace_period = 300
+  vpc_zone_identifier = [aws_subnet.bot_subnet.id]
+
+  # Use launch template
+  launch_template {
+    id      = aws_launch_template.discord_bot.id
+    version = "$Latest"
+  }
+
+  # Ignore changes to desired capacity so manual scaling doesn't conflict with Terraform
+  lifecycle {
+    ignore_changes = [desired_capacity]
+  }
+
+  tag {
+    key                 = "Name"
+    value              = "sanguine-overmortal-bot-server"
+    propagate_at_launch = true
+  }
 }
 
 # Add IAM role for CloudWatch monitoring
@@ -250,15 +301,15 @@ resource "aws_vpc" "bot_vpc" {
   }
 }
 
-# Public Subnet (for outbound internet access)
+# Private Subnet
 resource "aws_subnet" "bot_subnet" {
   vpc_id                  = aws_vpc.bot_vpc.id
   cidr_block             = "10.0.1.0/24"
   availability_zone      = "ap-southeast-1a"
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = false  # Changed to false for private subnet
 
   tags = {
-    Name = "sanguine-overmortal-bot-subnet"
+    Name = "sanguine-overmortal-bot-private-subnet"
   }
 }
 
@@ -271,8 +322,8 @@ resource "aws_internet_gateway" "bot_igw" {
   }
 }
 
-# Route Table
-resource "aws_route_table" "bot_rt" {
+# Public subnet route table
+resource "aws_route_table" "public_rt" {
   vpc_id = aws_vpc.bot_vpc.id
 
   route {
@@ -281,18 +332,38 @@ resource "aws_route_table" "bot_rt" {
   }
 
   tags = {
-    Name = "sanguine-overmortal-bot-rt"
+    Name = "sanguine-overmortal-public-rt"
   }
 }
 
-resource "aws_route_table_association" "bot_rta" {
+# Route Table
+resource "aws_route_table" "private_rt" {
+  vpc_id = aws_vpc.bot_vpc.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.bot_nat.id
+  }
+
+  tags = {
+    Name = "sanguine-overmortal-private-rt"
+  }
+}
+
+# Route table associations
+resource "aws_route_table_association" "private" {
   subnet_id      = aws_subnet.bot_subnet.id
-  route_table_id = aws_route_table.bot_rt.id
+  route_table_id = aws_route_table.private_rt.id
+}
+
+resource "aws_route_table_association" "public" {
+  subnet_id      = aws_subnet.public_subnet.id
+  route_table_id = aws_route_table.public_rt.id
 }
 
 resource "aws_cloudwatch_log_group" "discord_bot" {
   name              = "/sanguine-overmortal/discord-bot"
-  retention_in_days = 14
+  retention_in_days = 3
 
   tags = {
     Name = "sanguine-overmortal-bot-logs"
@@ -379,9 +450,41 @@ resource "aws_vpc_endpoint" "s3" {
   vpc_id            = aws_vpc.bot_vpc.id
   service_name      = "com.amazonaws.ap-southeast-1.s3"
   vpc_endpoint_type = "Gateway"
-  route_table_ids   = [aws_route_table.bot_rt.id]
+  route_table_ids   = [aws_route_table.private_rt.id]
+
+  depends_on = [aws_route_table.private_rt]
 
   tags = {
     Name = "sanguine-overmortal-s3-endpoint"
   }
-} 
+}
+
+# Elastic IP for NAT Gateway
+resource "aws_eip" "nat" {
+  domain = "vpc"
+  tags = {
+    Name = "sanguine-overmortal-nat-eip"
+  }
+}
+
+# NAT Gateway
+resource "aws_nat_gateway" "bot_nat" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public_subnet.id  # Place NAT Gateway in public subnet
+
+  tags = {
+    Name = "sanguine-overmortal-nat"
+  }
+}
+
+# Public subnet for NAT Gateway
+resource "aws_subnet" "public_subnet" {
+  vpc_id                  = aws_vpc.bot_vpc.id
+  cidr_block             = "10.0.2.0/24"
+  availability_zone      = "ap-southeast-1a"
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = "sanguine-overmortal-public-subnet"
+  }
+}
