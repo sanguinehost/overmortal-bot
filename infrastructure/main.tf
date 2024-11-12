@@ -216,30 +216,6 @@ resource "aws_security_group" "discord_bot" {
   }
 }
 
-# Add this policy to your bot IAM role
-resource "aws_iam_role_policy" "cloudwatch_logs" {
-  name = "cloudwatch-logs-policy"
-  role = aws_iam_role.bot_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-          "logs:DescribeLogStreams"
-        ]
-        Resource = [
-          "arn:aws:logs:*:*:log-group:/sanguine-overmortal/discord-bot:*"
-        ]
-      }
-    ]
-  })
-}
-
 # VPC Configuration
 resource "aws_vpc" "bot_vpc" {
   cidr_block           = "10.0.0.0/16"
