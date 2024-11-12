@@ -71,7 +71,7 @@ def get_secrets():
         )
         
         secret_response = client.get_secret_value(
-            SecretId='/prod/sanguine-overmortal/discord-bot'
+            SecretId='/prod/sanguine-overmortal/discord-bot-v2'
         )
         secrets = loads(secret_response['SecretString'])
         logger.info("Successfully loaded secrets from AWS")

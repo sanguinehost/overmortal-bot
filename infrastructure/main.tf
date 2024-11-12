@@ -143,7 +143,7 @@ resource "aws_security_group" "discord_bot" {
     description = "HTTPS inbound for SSM"
   }
 
-  # Single egress rule for HTTPS (covers both CloudWatch and regular HTTPS)
+  # Egress rules
   egress {
     from_port   = 443
     to_port     = 443
@@ -158,15 +158,6 @@ resource "aws_security_group" "discord_bot" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
     description = "HTTP outbound"
-  }
-
-  # Add CloudWatch Logs endpoint
-  egress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "CloudWatch Logs outbound"
   }
 
   tags = {

@@ -1,5 +1,5 @@
 resource "aws_secretsmanager_secret" "discord_secrets" {
-  name                    = "/prod/sanguine-overmortal/discord-bot"
+  name                    = "/prod/sanguine-overmortal/discord-bot-v2"
   description            = "Discord bot credentials"
   force_overwrite_replica_secret = true
   recovery_window_in_days = 0  # Immediate deletion
