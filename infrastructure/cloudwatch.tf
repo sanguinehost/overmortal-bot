@@ -2,10 +2,8 @@ resource "aws_ssm_parameter" "cloudwatch_config" {
   name  = "/AmazonCloudWatch/Config"
   type  = "String"
   value = jsonencode({
-    agent = {
-      run_as_user = "root"
-    }
     logs = {
+      force_flush_interval = 5
       logs_collected = {
         files = {
           collect_list = [
@@ -14,20 +12,18 @@ resource "aws_ssm_parameter" "cloudwatch_config" {
               log_group_name = "/sanguine-overmortal/system"
               log_stream_name = "{instance_id}"
               timezone = "UTC"
-            },
-            {
-              file_path = "/var/log/cloud-init-output.log"
-              log_group_name = "/sanguine-overmortal/cloud-init"
-              log_stream_name = "{instance_id}"
-              timezone = "UTC"
-            },
-            {
-              file_path = "/var/log/discord-bot.log"
-              log_group_name = "/sanguine-overmortal/discord-bot"
-              log_stream_name = "{instance_id}"
-              timezone = "UTC"
             }
           ]
+        }
+      }
+    }
+    metrics = {
+      metrics_collected = {
+        mem = {
+          measurement = ["mem_used_percent"]
+        }
+        swap = {
+          measurement = ["swap_used_percent"]
         }
       }
     }
