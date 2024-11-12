@@ -39,6 +39,10 @@ resource "aws_instance" "discord_bot" {
               dnf update -y
               dnf install -y python3 pip git amazon-cloudwatch-agent
 
+              # Create log directory
+              mkdir -p /opt/overmortal-bot/logs
+              chmod 755 /opt/overmortal-bot/logs
+
               # Python dependencies
               python3 -m pip install --upgrade pip
               pip3 install -r /opt/overmortal-bot/requirements.txt
@@ -61,7 +65,9 @@ resource "aws_instance" "discord_bot" {
               Type=simple
               User=root
               WorkingDirectory=/opt/overmortal-bot
-              ExecStart=/usr/bin/python3 src/bot.py --quiet
+              ExecStart=/usr/bin/python3 src/bot.py
+              StandardOutput=append:/opt/overmortal-bot/logs/bot.log
+              StandardError=append:/opt/overmortal-bot/logs/bot.log
               Restart=always
               RestartSec=3
 
@@ -128,14 +134,22 @@ resource "aws_security_group" "discord_bot" {
   description = "Security group for Sanguine Overmortal bot"
   vpc_id      = aws_vpc.bot_vpc.id
 
-  # No inbound access needed since bot only makes outbound connections
-  
+  # No inbound access needed except for SSM
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTPS inbound for SSM"
+  }
+
+  # Single egress rule for HTTPS (covers both CloudWatch and regular HTTPS)
   egress {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "HTTPS outbound"
+    description = "HTTPS outbound (CloudWatch, SSM, and general HTTPS)"
   }
 
   egress {
@@ -144,6 +158,15 @@ resource "aws_security_group" "discord_bot" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
     description = "HTTP outbound"
+  }
+
+  # Add CloudWatch Logs endpoint
+  egress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "CloudWatch Logs outbound"
   }
 
   tags = {
@@ -231,5 +254,66 @@ resource "aws_cloudwatch_log_group" "discord_bot" {
 
   tags = {
     Name = "sanguine-overmortal-bot-logs"
+  }
+}
+
+# SSM VPC Endpoints
+resource "aws_vpc_endpoint" "ssm" {
+  vpc_id            = aws_vpc.bot_vpc.id
+  service_name      = "com.amazonaws.ap-southeast-1.ssm"
+  vpc_endpoint_type = "Interface"
+
+  security_group_ids = [aws_security_group.discord_bot.id]
+  subnet_ids         = [aws_subnet.bot_subnet.id]
+
+  private_dns_enabled = true
+
+  tags = {
+    Name = "sanguine-overmortal-ssm-endpoint"
+  }
+}
+
+resource "aws_vpc_endpoint" "ssm_messages" {
+  vpc_id            = aws_vpc.bot_vpc.id
+  service_name      = "com.amazonaws.ap-southeast-1.ssmmessages"
+  vpc_endpoint_type = "Interface"
+
+  security_group_ids = [aws_security_group.discord_bot.id]
+  subnet_ids         = [aws_subnet.bot_subnet.id]
+
+  private_dns_enabled = true
+
+  tags = {
+    Name = "sanguine-overmortal-ssm-messages-endpoint"
+  }
+}
+
+resource "aws_vpc_endpoint" "ec2_messages" {
+  vpc_id            = aws_vpc.bot_vpc.id
+  service_name      = "com.amazonaws.ap-southeast-1.ec2messages"
+  vpc_endpoint_type = "Interface"
+
+  security_group_ids = [aws_security_group.discord_bot.id]
+  subnet_ids         = [aws_subnet.bot_subnet.id]
+
+  private_dns_enabled = true
+
+  tags = {
+    Name = "sanguine-overmortal-ec2-messages-endpoint"
+  }
+}
+
+resource "aws_vpc_endpoint" "cloudwatch_logs" {
+  vpc_id            = aws_vpc.bot_vpc.id
+  service_name      = "com.amazonaws.ap-southeast-1.logs"
+  vpc_endpoint_type = "Interface"
+
+  security_group_ids = [aws_security_group.discord_bot.id]
+  subnet_ids         = [aws_subnet.bot_subnet.id]
+
+  private_dns_enabled = true
+
+  tags = {
+    Name = "sanguine-overmortal-cloudwatch-logs-endpoint"
   }
 } 

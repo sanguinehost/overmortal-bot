@@ -1,7 +1,12 @@
 resource "aws_secretsmanager_secret" "discord_secrets" {
-  name = "/prod/sanguine-overmortal/discord-bot"
-  description = "Discord bot credentials"
-  recovery_window_in_days = 7
+  name                    = "/prod/sanguine-overmortal/discord-bot"
+  description            = "Discord bot credentials"
+  force_overwrite_replica_secret = true
+  recovery_window_in_days = 0  # Immediate deletion
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_secretsmanager_secret_version" "discord_secrets_version" {
