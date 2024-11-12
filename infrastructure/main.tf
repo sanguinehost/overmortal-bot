@@ -39,6 +39,20 @@ resource "aws_instance" "discord_bot" {
               dnf update -y
               dnf install -y python3 python3-pip git amazon-cloudwatch-agent
 
+              # Set AWS Region
+              mkdir -p /root/.aws
+              cat > /root/.aws/config <<EOL
+              [default]
+              region = ap-southeast-1
+              EOL
+
+              mkdir -p /home/ec2-user/.aws
+              cat > /home/ec2-user/.aws/config <<EOL
+              [default]
+              region = ap-southeast-1
+              EOL
+              chown -R ec2-user:ec2-user /home/ec2-user/.aws
+
               # Application setup
               cd /opt
               git clone https://github.com/sanguinehost/overmortal-bot
@@ -211,6 +225,15 @@ resource "aws_security_group" "discord_bot" {
     description = "VPC Internal HTTPS"
   }
 
+  # Allow HTTPS traffic to VPC endpoints
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.bot_vpc.cidr_block]
+    description = "HTTPS for VPC endpoints"
+  }
+
   tags = {
     Name = "sanguine-overmortal-bot-sg"
   }
@@ -334,5 +357,31 @@ resource "aws_vpc_endpoint" "cloudwatch_logs" {
 
   tags = {
     Name = "sanguine-overmortal-cloudwatch-logs-endpoint"
+  }
+}
+
+# Add EC2 VPC Endpoint
+resource "aws_vpc_endpoint" "ec2" {
+  vpc_id              = aws_vpc.bot_vpc.id
+  service_name        = "com.amazonaws.ap-southeast-1.ec2"
+  vpc_endpoint_type   = "Interface"
+  security_group_ids  = [aws_security_group.discord_bot.id]
+  subnet_ids          = [aws_subnet.bot_subnet.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "sanguine-overmortal-ec2-endpoint"
+  }
+}
+
+# Add S3 VPC Endpoint (Gateway type)
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = aws_vpc.bot_vpc.id
+  service_name      = "com.amazonaws.ap-southeast-1.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = [aws_route_table.bot_rt.id]
+
+  tags = {
+    Name = "sanguine-overmortal-s3-endpoint"
   }
 } 

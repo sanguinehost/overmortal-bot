@@ -26,7 +26,8 @@ if not os.getenv('LOCAL_DEV'):
         log_group='/sanguine-overmortal/discord-bot',
         log_stream_name=f'bot-{datetime.now().strftime("%Y-%m-%d")}',
         use_queues=True,
-        create_log_group=True
+        create_log_group=True,
+        boto3_client=boto3.client('logs', region_name='ap-southeast-1')
     )
     cloudwatch_handler.setLevel(logging.DEBUG)
     cloudwatch_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
