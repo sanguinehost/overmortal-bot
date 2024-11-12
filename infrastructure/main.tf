@@ -39,21 +39,21 @@ resource "aws_instance" "discord_bot" {
               dnf update -y
               dnf install -y python3 pip git amazon-cloudwatch-agent
 
+              # Application setup
+              cd /opt
+              git clone https://github.com/sanguinehost/overmortal-bot
+              cd overmortal-bot
+
               # Create log directory
               mkdir -p /opt/overmortal-bot/logs
               chmod 755 /opt/overmortal-bot/logs
 
               # Python dependencies
               python3 -m pip install --upgrade pip
-              pip3 install -r /opt/overmortal-bot/requirements.txt
+              pip3 install -r requirements.txt
 
               # CloudWatch setup
               /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c ssm:/AmazonCloudWatch/Config
-
-              # Application setup
-              cd /opt
-              git clone https://github.com/sanguinehost/overmortal-bot
-              cd overmortal-bot
 
               # Create service file
               cat > /etc/systemd/system/discord-bot.service <<EOL
@@ -99,6 +99,8 @@ resource "aws_instance" "discord_bot" {
   root_block_device {
     encrypted = true
   }
+
+  vpc_security_group_ids = [aws_security_group.discord_bot.id]
 }
 
 # Add IAM role for CloudWatch monitoring
@@ -160,6 +162,22 @@ resource "aws_security_group" "discord_bot" {
     description = "HTTP outbound"
   }
 
+  egress {
+    from_port   = 53
+    to_port     = 53
+    protocol    = "udp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "DNS (UDP)"
+  }
+
+  egress {
+    from_port   = 53
+    to_port     = 53
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "DNS (TCP)"
+  }
+
   tags = {
     Name = "sanguine-overmortal-bot-sg"
   }
@@ -204,6 +222,7 @@ resource "aws_vpc" "bot_vpc" {
 resource "aws_subnet" "bot_subnet" {
   vpc_id                  = aws_vpc.bot_vpc.id
   cidr_block             = "10.0.1.0/24"
+  availability_zone      = "ap-southeast-1a"
   map_public_ip_on_launch = true
 
   tags = {
