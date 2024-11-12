@@ -8,13 +8,32 @@ from dotenv import load_dotenv
 import boto3
 from json import loads
 import argparse
+import watchtower
 
 # Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Console handler
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.DEBUG)
+console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(console_formatter)
+
+# CloudWatch handler
+if not os.getenv('LOCAL_DEV'):
+    cloudwatch_handler = watchtower.CloudWatchLogHandler(
+        log_group='/sanguine-overmortal/discord-bot',
+        log_stream_name=f'bot-{datetime.now().strftime("%Y-%m-%d")}',
+        use_queues=True,
+        create_log_group=True
+    )
+    cloudwatch_handler.setLevel(logging.DEBUG)
+    cloudwatch_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    cloudwatch_handler.setFormatter(cloudwatch_formatter)
+    logger.addHandler(cloudwatch_handler)
+
+logger.addHandler(console_handler)
 
 # Load environment variables
 load_dotenv()
