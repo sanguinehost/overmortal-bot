@@ -70,6 +70,19 @@ resource "aws_instance" "discord_bot" {
   lifecycle {
     ignore_changes = [ami]
   }
+
+  subnet_id = aws_subnet.bot_subnet.id
+
+  # Add IMDSv2 requirement
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = "required"  # Require IMDSv2
+  }
+
+  # Add root volume encryption
+  root_block_device {
+    encrypted = true
+  }
 }
 
 # Add IAM role for CloudWatch monitoring
@@ -103,12 +116,28 @@ resource "aws_iam_role_policy_attachment" "cloudwatch_policy" {
 resource "aws_security_group" "discord_bot" {
   name        = "sanguine-overmortal-bot-sg"
   description = "Security group for Sanguine Overmortal bot"
+  vpc_id      = aws_vpc.bot_vpc.id
+
+  # No inbound access needed since bot only makes outbound connections
+  
+  egress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTPS outbound"
+  }
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTP outbound"
+  }
+
+  tags = {
+    Name = "sanguine-overmortal-bot-sg"
   }
 }
 
@@ -134,4 +163,54 @@ resource "aws_iam_role_policy" "cloudwatch_logs" {
       }
     ]
   })
+}
+
+# VPC Configuration
+resource "aws_vpc" "bot_vpc" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = {
+    Name = "sanguine-overmortal-bot-vpc"
+  }
+}
+
+# Public Subnet (for outbound internet access)
+resource "aws_subnet" "bot_subnet" {
+  vpc_id                  = aws_vpc.bot_vpc.id
+  cidr_block             = "10.0.1.0/24"
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = "sanguine-overmortal-bot-subnet"
+  }
+}
+
+# Internet Gateway
+resource "aws_internet_gateway" "bot_igw" {
+  vpc_id = aws_vpc.bot_vpc.id
+
+  tags = {
+    Name = "sanguine-overmortal-bot-igw"
+  }
+}
+
+# Route Table
+resource "aws_route_table" "bot_rt" {
+  vpc_id = aws_vpc.bot_vpc.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.bot_igw.id
+  }
+
+  tags = {
+    Name = "sanguine-overmortal-bot-rt"
+  }
+}
+
+resource "aws_route_table_association" "bot_rta" {
+  subnet_id      = aws_subnet.bot_subnet.id
+  route_table_id = aws_route_table.bot_rt.id
 } 
