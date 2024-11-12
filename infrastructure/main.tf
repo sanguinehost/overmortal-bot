@@ -31,7 +31,7 @@ resource "aws_instance" "discord_bot" {
 
               # Python dependencies
               python3 -m pip install --upgrade pip
-              pip3 install discord.py pytz boto3 python-dotenv
+              pip3 install -r /opt/overmortal-bot/requirements.txt
 
               # CloudWatch setup
               /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c ssm:/AmazonCloudWatch/Config
@@ -39,7 +39,7 @@ resource "aws_instance" "discord_bot" {
               # Application setup
               cd /opt
               git clone https://github.com/sanguinehost/overmortal-bot
-              cd your-repo-name
+              cd overmortal-bot
 
               # Create service file
               cat > /etc/systemd/system/discord-bot.service <<EOL
@@ -49,9 +49,9 @@ resource "aws_instance" "discord_bot" {
 
               [Service]
               Type=simple
-              User=ec2-user
-              WorkingDirectory=/opt/your-repo-name
-              ExecStart=/usr/bin/python3 src/bot.py
+              User=root
+              WorkingDirectory=/opt/overmortal-bot
+              ExecStart=/usr/bin/python3 src/bot.py --quiet
               Restart=always
               RestartSec=3
 
@@ -213,4 +213,13 @@ resource "aws_route_table" "bot_rt" {
 resource "aws_route_table_association" "bot_rta" {
   subnet_id      = aws_subnet.bot_subnet.id
   route_table_id = aws_route_table.bot_rt.id
+}
+
+resource "aws_cloudwatch_log_group" "discord_bot" {
+  name              = "/sanguine-overmortal/discord-bot"
+  retention_in_days = 14
+
+  tags = {
+    Name = "sanguine-overmortal-bot-logs"
+  }
 } 
