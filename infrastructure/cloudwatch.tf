@@ -12,6 +12,12 @@ resource "aws_ssm_parameter" "cloudwatch_config" {
               log_group_name = "/sanguine-overmortal/system"
               log_stream_name = "{instance_id}"
               timezone = "UTC"
+            },
+            {
+              file_path = "/opt/overmortal-bot/logs/bot.log"
+              log_group_name = "/sanguine-overmortal/discord-bot"
+              log_stream_name = "{instance_id}"
+              timezone = "UTC"
             }
           ]
         }

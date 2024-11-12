@@ -37,20 +37,28 @@ resource "aws_instance" "discord_bot" {
 
               # System updates
               dnf update -y
-              dnf install -y python3 pip git amazon-cloudwatch-agent
+              dnf install -y python3 python3-pip git amazon-cloudwatch-agent
 
               # Application setup
               cd /opt
               git clone https://github.com/sanguinehost/overmortal-bot
               cd overmortal-bot
 
-              # Create log directory
+              # Set proper ownership and permissions
+              chown -R ec2-user:ec2-user /opt/overmortal-bot
+              chmod 755 /opt/overmortal-bot
+
+              # Create and configure venv
+              python3 -m venv /opt/overmortal-bot/venv
+              chown -R ec2-user:ec2-user /opt/overmortal-bot/venv
+
+              # Create log directory with proper permissions
               mkdir -p /opt/overmortal-bot/logs
+              chown -R ec2-user:ec2-user /opt/overmortal-bot/logs
               chmod 755 /opt/overmortal-bot/logs
 
-              # Python dependencies
-              python3 -m pip install --upgrade pip
-              pip3 install -r requirements.txt
+              # Install dependencies in venv
+              sudo -u ec2-user /opt/overmortal-bot/venv/bin/pip install -r requirements.txt
 
               # CloudWatch setup
               /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c ssm:/AmazonCloudWatch/Config
@@ -63,9 +71,10 @@ resource "aws_instance" "discord_bot" {
 
               [Service]
               Type=simple
-              User=root
+              User=ec2-user
+              Group=ec2-user
               WorkingDirectory=/opt/overmortal-bot
-              ExecStart=/usr/bin/python3 src/bot.py
+              ExecStart=/opt/overmortal-bot/venv/bin/python src/bot.py
               StandardOutput=append:/opt/overmortal-bot/logs/bot.log
               StandardError=append:/opt/overmortal-bot/logs/bot.log
               Restart=always
@@ -151,7 +160,7 @@ resource "aws_security_group" "discord_bot" {
     to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "HTTPS outbound (CloudWatch, SSM, and general HTTPS)"
+    description = "HTTPS outbound (CloudWatch, SSM, Discord API)"
   }
 
   egress {
@@ -159,7 +168,7 @@ resource "aws_security_group" "discord_bot" {
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "HTTP outbound"
+    description = "HTTP outbound (package installation)"
   }
 
   egress {
@@ -176,6 +185,30 @@ resource "aws_security_group" "discord_bot" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
     description = "DNS (TCP)"
+  }
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["3.0.5.32/29"]  # EC2 Instance Connect IP range for ap-southeast-1
+    description = "EC2 Instance Connect"
+  }
+
+  egress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["3.0.5.32/29"]  # EC2 Instance Connect
+    description = "EC2 Instance Connect HTTPS"
+  }
+
+  egress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["${aws_vpc.bot_vpc.cidr_block}"]  # Internal VPC CIDR
+    description = "VPC Internal HTTPS"
   }
 
   tags = {
