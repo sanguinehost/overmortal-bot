@@ -231,7 +231,7 @@ def clear_old_cache_entries():
     current_time = datetime.now(TIMEZONE)
     expired_keys = [
         key for key, timestamp in NOTIFICATION_CACHE.items()
-        if (current_time - timestamp).total_seconds() > 120  # 2 minutes expiry
+        if (current_time - timestamp).total_seconds() > 600  # 10 minutes expiry
     ]
     if expired_keys:
         logger.debug(f"[Cache] Clearing {len(expired_keys)} expired entries")
@@ -239,10 +239,14 @@ def clear_old_cache_entries():
         del NOTIFICATION_CACHE[key]
 
 def should_send_notification(event_name, notification_type, scheduled_time):
-    # Create cache key using the rounded time to the nearest minute
-    rounded_time = scheduled_time.replace(second=0, microsecond=0)
+    # Round to the nearest 5 minutes to create a stable cache key
+    rounded_minutes = (scheduled_time.minute // 5) * 5
+    rounded_time = scheduled_time.replace(minute=rounded_minutes, second=0, microsecond=0)
     cache_key = f"{event_name}_{notification_type}_{rounded_time.strftime('%Y-%m-%d_%H:%M')}"
     current_time = datetime.now(TIMEZONE)
+    
+    logger.debug(f"[Cache] Checking cache key: {cache_key}")
+    logger.debug(f"[Cache] Current cache entries: {list(NOTIFICATION_CACHE.keys())}")
     
     if cache_key in NOTIFICATION_CACHE:
         logger.debug(f"[Cache] Found existing notification for {cache_key}")
@@ -252,14 +256,14 @@ def should_send_notification(event_name, notification_type, scheduled_time):
     NOTIFICATION_CACHE[cache_key] = current_time
     return True
 
-@tasks.loop(seconds=30)  # Check every 30 seconds
+@tasks.loop(seconds=30)
 async def check_events():
     clear_old_cache_entries()
     channel = bot.get_channel(int(CHANNEL_ID))
     current_time = datetime.now(TIMEZONE)
     current_day = current_time.strftime('%A').lower()
     
-    # Round current time to nearest minute for more reliable comparisons
+    # Round current time to nearest minute
     current_time = current_time.replace(second=0, microsecond=0)
     
     logger.debug(f"[TimeCheck] Current time: {current_time.strftime('%Y-%m-%d %H:%M:%S')} ({current_day})")
@@ -270,23 +274,19 @@ async def check_events():
                 notif_times = get_notification_times(event_time, event_data['duration'])
                 time_str = event_time.strftime('%H:%M')
                 
-                # Log event check
-                logger.debug(f"[EventCheck] Checking {event_name} scheduled for {time_str}")
-                
-                # Check each notification time with a 1-minute window
                 for notif_type, notif_time in notif_times.items():
                     target_minutes = notif_time.hour * 60 + notif_time.minute
                     current_minutes = current_time.hour * 60 + current_time.minute
                     time_diff = abs(target_minutes - current_minutes)
                     
-                    logger.debug(f"[TimeCompare] {event_name} {notif_type}: Target={notif_time.strftime('%H:%M')} Current={current_time.strftime('%H:%M')} Diff={time_diff}min")
-                    
-                    if time_diff <= 1:  # Within 1 minute window
-                        if should_send_notification(event_name, notif_type, current_time):
-                            logger.info(f"[Notification] Triggering {notif_type} notification for {event_name} (scheduled: {time_str})")
-                            await send_notification(channel, event_name, notif_type, time_str)
-                        else:
-                            logger.debug(f"[Cache] Notification for {event_name} {notif_type} was already sent")
+                    # Tighten the time window to 30 seconds
+                    if time_diff <= 0:  # Exact match on minutes
+                        if current_time.second < 30:  # Only trigger in first 30 seconds of the minute
+                            if should_send_notification(event_name, notif_type, current_time):
+                                logger.info(f"[Notification] Triggering {notif_type} notification for {event_name} (scheduled: {time_str})")
+                                await send_notification(channel, event_name, notif_type, time_str)
+                            else:
+                                logger.debug(f"[Cache] Notification for {event_name} {notif_type} was already sent")
 
 async def send_notification(channel, event_name, notif_type, time_str):
     event_vi = TRANSLATIONS[event_name]['vi']
