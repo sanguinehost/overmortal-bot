@@ -132,7 +132,7 @@ resource "aws_launch_template" "discord_bot" {
     device_name = "/dev/xvda"
     ebs {
       encrypted   = true
-      volume_size = 8
+      volume_size = 30
       volume_type = "gp3"
     }
   }
