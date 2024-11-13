@@ -274,12 +274,17 @@ async def check_events():
                 notif_times = get_notification_times(event_time, event_data['duration'])
                 time_str = event_time.strftime('%H:%M')
                 
+                # Add back event check logging
+                logger.debug(f"[EventCheck] Checking {event_name} scheduled for {time_str}")
+                
                 for notif_type, notif_time in notif_times.items():
                     target_minutes = notif_time.hour * 60 + notif_time.minute
                     current_minutes = current_time.hour * 60 + current_time.minute
                     time_diff = abs(target_minutes - current_minutes)
                     
-                    # Tighten the time window to 30 seconds
+                    # Add back time comparison logging
+                    logger.debug(f"[TimeCompare] {event_name} {notif_type}: Target={notif_time.strftime('%H:%M')} Current={current_time.strftime('%H:%M')} Diff={time_diff}min")
+                    
                     if time_diff <= 0:  # Exact match on minutes
                         if current_time.second < 30:  # Only trigger in first 30 seconds of the minute
                             if should_send_notification(event_name, notif_type, current_time):
