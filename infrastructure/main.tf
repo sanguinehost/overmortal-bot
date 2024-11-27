@@ -9,7 +9,7 @@ data "aws_ami" "amazon_linux_2023" {
 
   filter {
     name   = "name"
-    values = ["al2023-ami-*-x86_64"]
+    values = ["al2023-ami-*-arm64"]
   }
 
   filter {
@@ -27,13 +27,13 @@ data "aws_ami" "amazon_linux_2023" {
 resource "aws_launch_template" "discord_bot" {
   name_prefix   = "discord-bot-"
   image_id      = data.aws_ami.amazon_linux_2023.id
-  instance_type = "t2.micro"
+  instance_type = "t4g.nano"
 
   # Request spot instances
   instance_market_options {
     market_type = "spot"
     spot_options {
-      max_price = "0.008" # ~70% of on-demand price
+      max_price = "0.0017" # ~70% of t4g.nano on-demand price
     }
   }
 
@@ -466,18 +466,23 @@ data "aws_ami" "nat" {
 
   filter {
     name   = "name"
-    values = ["amzn-ami-vpc-nat-*"]
+    values = ["amzn-ami-vpc-nat-*"]  # AWS's official NAT AMI
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
   }
 }
 
 resource "aws_instance" "nat" {
-  ami                    = data.aws_ami.nat.id
-  instance_type          = "t3.nano"
-  subnet_id              = aws_subnet.public_subnet.id
-  vpc_security_group_ids = [aws_security_group.nat.id]
-  source_dest_check      = false
+  ami                         = data.aws_ami.nat.id
+  instance_type              = "t3.nano"
+  subnet_id                  = aws_subnet.public_subnet.id
+  vpc_security_group_ids     = [aws_security_group.nat.id]
+  source_dest_check         = false
   associate_public_ip_address = true
-  depends_on = [aws_internet_gateway.bot_igw]
+  depends_on                 = [aws_internet_gateway.bot_igw]
 
   tags = {
     Name = "sanguine-overmortal-nat-instance"
