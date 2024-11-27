@@ -106,7 +106,7 @@ resource "aws_launch_template" "discord_bot" {
               User=ec2-user
               Group=ec2-user
               WorkingDirectory=/opt/overmortal-bot
-              ExecStart=/opt/overmortal-bot/venv/bin/python src/bot.py
+              ExecStart=/opt/overmortal-bot/venv/bin/python src/bot.py --quiet
               StandardOutput=append:/opt/overmortal-bot/logs/bot.log
               StandardError=append:/opt/overmortal-bot/logs/bot.log
               Restart=always
