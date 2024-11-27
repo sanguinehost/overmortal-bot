@@ -113,6 +113,11 @@ async def on_error(event, *args, **kwargs):
 
 # Event times (UTC+7)
 EVENTS = {
+    'Daily Reset': {
+        'times': [time(8, 0)],
+        'duration': timedelta(minutes=1),  # Minimal duration since it's an instant event
+        'days': ['daily']
+    },
     'Beast Invasion': {
         'times': [time(12, 0), time(18, 0)],
         'duration': timedelta(minutes=15),
@@ -146,6 +151,10 @@ EVENTS = {
 }
 
 TRANSLATIONS = {
+    'Daily Reset': {
+        'vi': 'Reset Hàng Ngày',
+        'en': 'Daily Reset'
+    },
     'Beast Invasion': {
         'vi': 'Xâm Lược Thú Hoang',
         'en': 'Beast Invasion'
@@ -206,6 +215,14 @@ TRANSLATIONS = {
         'timezone': {
             'en': 'All times are in UTC+7 (Bangkok time)',
             'vi': 'Tất cả thời gian theo UTC+7 (Giờ Bangkok)'
+        },
+        'daily_reset': {
+            'en': '🌅 Daily Reset Time!',
+            'vi': '🌅 Thời Gian Reset Hàng Ngày!'
+        },
+        'daily_reset_desc': {
+            'en': 'Time to:\n• Take pills\n• Do respiration\n• Collect resources\n• Check sect tasks',
+            'vi': 'Đã đến lúc:\n• Uống đan dược\n• Luyện hô hấp\n• Thu thập tài nguyên\n• Kiểm tra nhiệm vụ tông môn'
         }
     }
 }
@@ -312,6 +329,11 @@ async def send_notification(channel, event_name, notif_type, time_str):
             'title': TRANSLATIONS['notifications']['ending_30'],
             'desc': TRANSLATIONS['notifications']['ending_30_desc'],
             'color': 0xFF0000
+        },
+        'exact': {  # New config for exact-time notifications like daily reset
+            'title': TRANSLATIONS['notifications']['daily_reset'],
+            'desc': TRANSLATIONS['notifications']['daily_reset_desc'],
+            'color': 0x00FF00  # Bright green color
         }
     }
     
