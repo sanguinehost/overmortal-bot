@@ -106,7 +106,7 @@ resource "aws_launch_template" "discord_bot" {
               User=ec2-user
               Group=ec2-user
               WorkingDirectory=/opt/overmortal-bot
-              ExecStart=/opt/overmortal-bot/venv/bin/python src/bot.py --quiet
+              ExecStart=/opt/overmortal-bot/venv/bin/python src/bot.py
               StandardOutput=append:/opt/overmortal-bot/logs/bot.log
               StandardError=append:/opt/overmortal-bot/logs/bot.log
               Restart=always
@@ -341,8 +341,8 @@ resource "aws_route_table" "private_rt" {
   vpc_id = aws_vpc.bot_vpc.id
 
   route {
-    cidr_block = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.bot_nat.id
+    cidr_block           = "0.0.0.0/0"
+    network_interface_id = aws_instance.nat.primary_network_interface_id
   }
 
   tags = {
@@ -459,21 +459,52 @@ resource "aws_vpc_endpoint" "s3" {
   }
 }
 
-# Elastic IP for NAT Gateway
-resource "aws_eip" "nat" {
-  domain = "vpc"
-  tags = {
-    Name = "sanguine-overmortal-nat-eip"
+# Add NAT Instance configuration
+data "aws_ami" "nat" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["amzn-ami-vpc-nat-*"]
   }
 }
 
-# NAT Gateway
-resource "aws_nat_gateway" "bot_nat" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public_subnet.id  # Place NAT Gateway in public subnet
+resource "aws_instance" "nat" {
+  ami                    = data.aws_ami.nat.id
+  instance_type          = "t3.nano"
+  subnet_id              = aws_subnet.public_subnet.id
+  vpc_security_group_ids = [aws_security_group.nat.id]
+  source_dest_check      = false
+  associate_public_ip_address = true
+  depends_on = [aws_internet_gateway.bot_igw]
 
   tags = {
-    Name = "sanguine-overmortal-nat"
+    Name = "sanguine-overmortal-nat-instance"
+  }
+}
+
+resource "aws_security_group" "nat" {
+  name        = "sanguine-overmortal-nat-sg"
+  description = "Security group for NAT instance"
+  vpc_id      = aws_vpc.bot_vpc.id
+
+  ingress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = [aws_vpc.bot_vpc.cidr_block]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "sanguine-overmortal-nat-sg"
   }
 }
 
@@ -486,5 +517,14 @@ resource "aws_subnet" "public_subnet" {
 
   tags = {
     Name = "sanguine-overmortal-public-subnet"
+  }
+}
+
+resource "aws_eip" "nat_eip" {
+  domain = "vpc"
+  instance = aws_instance.nat.id
+
+  tags = {
+    Name = "sanguine-overmortal-nat-eip"
   }
 }
